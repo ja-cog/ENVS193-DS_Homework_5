@@ -1,0 +1,232 @@
+---
+title: "HW_5"
+author: "Jacob Coggshall"
+date: "2023-06-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(here)
+library(janitor)
+library(ggeffects)
+library(performance)
+library(naniar)
+library(flextable) 
+library(car)
+library(broom)
+library(corrplot)
+library(AICcmodavg)
+library(GGally)
+library(MuMIn)
+```
+
+Introduction:
+
+The analysis conducted in this study focuses on Sarracenia, a genus of carnivorous plants commonly known as pitcher plants. Sarracenia plants are known for their unique pitcher-shaped leaves that capture and digest insects, enabling them to obtain nutrients from the prey.
+
+Understanding Sarracenia plants and their characteristics is of interest to various groups of people. Botanists and ecologists study these plants to gain insights into their ecological role, adaptations, and interactions with other organisms. Conservationists are interested in preserving pitcher plant habitats and ensuring the survival of these unique plant species. Furthermore, Sarracenia plants have also gained popularity among horticultural enthusiasts and collectors.
+
+In this analysis, we aim to predict the individual biomass of Sarracenia plants using morphological, physiological, and taxonomic characteristics. Predicting biomass can provide valuable information about plant growth and productivity, which is important for understanding plant ecology, nutrient dynamics, and ecosystem functioning. Additionally, predicting biomass can aid in assessing the health and condition of pitcher plant populations, enabling conservation efforts and management strategies to be implemented effectively.
+
+The main questions addressed in this analysis include: What factors influence the individual biomass of Sarracenia plants? Which morphological, physiological, and taxonomic characteristics are most strongly associated with biomass? Are there significant differences in biomass among different species or feeding levels of Sarracenia plants?
+
+To answer these questions, we formulate the following hypotheses:
+
+Morphological characteristics such as the number of leaves and phyllodia are positively correlated with the biomass of Sarracenia plants.
+Physiological traits such as specific leaf area (SLA) and chlorophyll content are positively associated with biomass.
+Taxonomic characteristics, such as the species of Sarracenia, may influence biomass, with certain species exhibiting higher biomass than others.
+Feeding level, which indicates the amount of prey captured and digested by the pitcher plant, may be positively correlated with biomass.
+By analyzing a dataset of Sarracenia plants and conducting various statistical models, we aim to identify the key predictors of individual biomass and gain insights into the factors driving the growth and productivity of these fascinating carnivorous plants.
+
+
+```{r Read_Data}
+# Read the CSV file and store it in the 'plant' variable
+plant <- read_csv(here("data", "hf109-01-sarracenia.csv")) |> 
+  # Clean the column names for clarity
+  clean_names() |> 
+  # Select the columns of interest
+  select(
+    totmass,       
+    species,       
+    feedlevel,     
+    sla,           
+    chlorophyll,   
+    amass,         
+    num_lvs,       
+    num_phylls     
+  )
+```
+
+```{r Missing_Data_Viz}
+#check for missing data
+gg_miss_var(plant) 
+```
+
+```{r Drop_NA}
+plant_subset <- plant|> 
+#create better plant ibject
+drop_na(sla, chlorophyll, amass, num_lvs, num_phylls)
+```
+
+```{r Pearson_Viz}
+# Calculate Pearson's correlation coefficient
+plant_cor <- plant_subset |> 
+  select(feedlevel:num_phylls) |> 
+  cor(method = "pearson")
+
+# Create a correlation plot
+corrplot(plant_cor,
+         method = "ellipse",
+         addCoef.col= "black") 
+
+```
+
+```{r}
+#Creates pairs plot
+plant_subset |> 
+select(species:num_phylls) |> 
+ggpairs() 
+```
+
+```{r}
+#linear models
+null_m <- lm(totmass ~ 1, data= plant_subset)
+
+
+full_m <- lm(totmass ~ species + feedlevel + sla + chlorophyll + amass + num_lvs + num_phylls, data= plant_subset)
+```
+
+```{r}
+#plotting model
+par(mfrow = c(2,2))
+plot(full_m)
+```
+
+```{r}
+#checking assumptions
+check_normality(full_m)
+check_heteroscedasticity(full_m)
+```
+
+```{r}
+#transforming models and plotting
+null_l <- lm(log(totmass)~1, data = plant_subset)
+full_l <- lm(log(totmass)~ species + feedlevel + sla + chlorophyll + amass + num_lvs + num_phylls, data= plant_subset)
+
+plot(full_l)
+check_normality(full_l)
+check_heteroscedasticity(full_l)
+```
+```{r}
+#better models
+model_1 <- lm(log(totmass)~chlorophyll, data= plant_subset)
+model_2 <- lm(log(totmass)~amass, data = plant_subset)
+model_3 <- lm(log(totmass)~species, data = plant_subset)
+```
+
+```{r}
+#Checking assumptions
+plot(model_1)
+
+check_normality(model_1)
+
+check_heteroscedasticity(model_1)
+
+plot(model_2)
+
+check_normality(model_2)
+
+check_heteroscedasticity(model_2)
+
+plot(model_3)
+
+check_normality(model_3)
+
+check_heteroscedasticity(model_3)
+```
+
+```{r}
+#check
+vif(full_l)
+```
+
+```{r}
+#comparing models
+AICc(full_l)
+AICc(model_1)
+AICc(model_2)
+AICc(model_3)
+AICc(null_l)
+
+MuMIn::AICc(full_l, model_1, model_2, model_3, null_l)
+MuMIn::model.sel(full_l, model_1, model_2, model_3, null_l)
+```
+
+```{r}
+summary(full_l)
+tidy(full_l, conf.int = TRUE, conf.level = .95)
+```
+
+```{r}
+#prediction
+prediction <- ggpredict(full_l, terms= "num_lvs", back.transform = TRUE)
+summary(null_l)
+#plot
+plot(prediction, add.data=TRUE)
+```
+
+Data collection summary:
+
+The data was collected from a CSV file named "hf109-01-sarracenia.csv."
+The data includes variables such as total mass, species, feed level, specific leaf area (SLA), chlorophyll content, aerial mass, number of leaves, and number of phyllodes.
+Description of data organization/processing:
+
+The data was read from the CSV file and stored in the 'plant' variable.
+The column names were cleaned for clarity.
+A subset of columns of interest was selected for further analysis.
+Discussion of missing observations:
+
+A visualization of missing data was created using the gg_miss_var() function.
+Missing values in the variables related to SLA, chlorophyll, aerial mass, number of leaves, and number of phyllodes were dropped using drop_na() function to create the 'plant_subset' object.
+Discussion of Pearson correlation:
+
+Pearson's correlation coefficient was calculated for the variables in the 'plant_subset' using the cor() function.
+The correlation coefficients were visualized using a correlation plot created with corrplot() function.
+Discussion of relationships between variables:
+
+The pairs plot was created using the ggpairs() function to visualize relationships between variables in the 'plant_subset' dataset.
+Null model:
+
+The null model was created using the formula totmass ~ 1 in the lm() function.
+It represents the simplest model without any predictors.
+Full model:
+
+The full model was created using multiple predictors: species, feed level, SLA, chlorophyll content, aerial mass, number of leaves, and number of phyllodes.
+The formula totmass ~ species + feedlevel + sla + chlorophyll + amass + num_lvs + num_phylls was used in the lm() function.
+Discussion of null and full model:
+
+The null model provides a baseline against which the full model can be compared to determine if the predictors significantly improve the model's performance.
+By comparing the summaries and diagnostic plots of the null and full models, the impact of the predictors on the model can be assessed.
+Explanation of predictors for the second test model:
+
+The second test model includes a single predictor, chlorophyll content, and the formula log(totmass) ~ chlorophyll was used.
+This model aims to investigate the relationship between chlorophyll content and log-transformed total mass while controlling for other variables.
+Explanation of predictors for the third test model:
+
+The third test model includes a single predictor, species, and the formula log(totmass) ~ species was used.
+This model examines the effect of different species on log-transformed total mass while accounting for other variables.
+Model comparison:
+
+The AICc values were calculated for the full model, second test model (chlorophyll predictor), third test model (species predictor), and the null model.
+The models were compared using the AICc() function and the model.sel() function from the MuMIn package to determine the best-fitting model based on AICc values.
+
+
+The best model chosen for the analysis is the "full_l" model, which incorporates log-transformed total mass as the response variable and multiple predictors, including species, feed level, specific leaf area (SLA), chlorophyll content, aerial mass, number of leaves, and number of phyllodes. The selection of the best model was based on the AICc values, where the model with the lowest AICc value was deemed the most suitable, striking a balance between goodness of fit and model complexity. However, it is essential to assess whether the best model adheres to certain assumptions, such as linearity, independence, homoscedasticity, and normality of residuals, which were evaluated using diagnostic plots. The conformity of the model to these assumptions is crucial, as deviations might affect the validity of the model's results and interpretations.
+
+The summary of the "full_l" model provides valuable information regarding the coefficients, standard errors, t-values, and p-values associated with each predictor. Moreover, it includes an estimated intercept, representing the expected log-transformed total mass when all predictors are set to zero. Interpretation of the model becomes possible through the examination of these coefficients, allowing us to understand the direction and magnitude of the relationships between each predictor and the log-transformed total mass. Positive coefficients suggest that an increase in a specific predictor corresponds to an increase in log-transformed total mass, while negative coefficients indicate the opposite effect.
+
